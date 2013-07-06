@@ -1,0 +1,88 @@
+#!/usr/bin/env perl
+
+use HTML::TreeBuilder;
+use Data::Dumper;
+
+our $link_href;
+our %parts;
+our $collect;
+our $blockquoting = 0;
+
+my $parser = HTML::Parser->new(
+    start_h => [\&start, "tagname, attr"],
+    end_h   => [\&end, "tagname"],
+    text_h  => [\&text, "text"],
+);
+
+my @files = @ARGV;
+if (!scalar @ARGV) {
+    @files = <*.html>;
+}
+
+foreach my $file (@files) {
+    my $out = substr($file, 0, length($file)-4) . "md";
+    open OUT, ">$out" or die "Can't write to $out: $!";
+    %parts = ();
+    $collect = undef;
+    $blockquoting = 0;
+    $parser->parse_file($file);
+    foreach my $part (qw(image caption header subtitle body footer)) {
+        if ($parts{$part}) {
+            print OUT $parts{$part};
+        }
+    }
+    close OUT;
+}
+
+sub start {
+    my ($tagname, $attr) = @_;
+    if ($tagname eq "section") {
+        $collect = $attr->{"data-field"};
+        $parts{$collect} = "";
+        if ($collect eq "subtitle") {
+            $parts{$collect} .= "## ";
+        }
+    } elsif ($tagname eq "a") {
+        $parts{$collect} .= "[";
+        $link_href = $attr->{href};
+    } elsif ($tagname eq "h1") {
+        $collect = "header";
+        $parts{$collect} = "# ";
+    } elsif ($tagname =~ /^h([23])$/) {
+        $parts{$collect} .= ("#"x($1+1)) . " ";
+    } elsif ($tagname eq "img") {
+        $parts{$collect} .= "![](" . $attr->{src} . ")" . "\n\n";
+    } elsif ($tagname eq "blockquote") {
+        $blockquoting = 1;
+    } elsif ($tagname eq "strong") {
+        $parts{$collect} .= "**";
+    } elsif ($tagname eq "em") {
+        $parts{$collect} .= "*";
+    }
+}
+
+sub end {
+    my $tagname = shift @_;
+    if ($tagname eq "p" || $tagname eq "figcaption" || $tagname eq "section" || $tagname =~ /^h[123]/) {
+        $parts{$collect} .= "\n\n";
+    } elsif ($tagname eq "blockquote") {
+        $blockquoting = 0;
+        $parts{$collect} .= "\n\n";
+    } elsif ($tagname eq "a") {
+        $parts{$collect} .= "]($link_href)";
+    } elsif ($tagname eq "strong") {
+        $parts{$collect} .= "**";
+    } elsif ($tagname eq "em") {
+        $parts{$collect} .= "*";
+    }
+}
+
+sub text {
+    if ($collect) {
+        if ($blockquoting) {
+            $parts{$collect} .= "> ";
+        }
+        $_[0] =~ s/^\n*//;
+        $parts{$collect} .= $_[0];
+    }
+}
