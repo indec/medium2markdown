@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 
 use HTML::TreeBuilder;
-use Data::Dumper;
 
 our $link_href;
 our %parts;
